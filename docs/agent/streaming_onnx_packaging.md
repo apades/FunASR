@@ -79,6 +79,8 @@ GitHub 托管 runner 内存大约 7GB。Paraformer-large 导出如果内存不�
 
 从 runner 访问 modelscope.cn 可能超时。该槽位在 `name_maps_hf` 有别名时，导出脚本会用 `hub="hf"` 再试一次。没有别名时不会假装可以换源。
 
+导出环境与仓库其他 CI 一样使用 CPU 版 `torch==2.10.0`，并安装 `onnx` 和 `onnxscript`。`torch.onnx.export` 会导入 `onnxscript`；缺少这个包时，权重可以加载，导出会立刻失败。
+
 ## 更新文档
 
 改到 `runtime/run_server_2pass.sh`、`examples/industrial_data_pretraining/**/export.py`、`funasr/download/name_maps_from_hub.py` 或 `funasr/models/**/export_meta.py` 之后，在同一个 `dev` 提交里运行：
