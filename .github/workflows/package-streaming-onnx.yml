@@ -1,0 +1,176 @@
+name: Package streaming ONNX
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - "runtime/run_server_2pass.sh"
+      - "examples/industrial_data_pretraining/**/export.py"
+      - "funasr/download/name_maps_from_hub.py"
+      - "funasr/models/**/export_meta.py"
+      - "scripts/discover_streaming_onnx_targets.py"
+      - "scripts/export_streaming_onnx.py"
+      - "docs/agent/streaming_onnx_targets.json"
+      - "docs/agent/streaming_onnx_packaging.md"
+      - ".github/workflows/package-streaming-onnx.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      dev_sha: ${{ steps.rev.outputs.dev_sha }}
+      main_sha: ${{ steps.rev.outputs.main_sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check manifest matches the tree
+        run: python scripts/discover_streaming_onnx_targets.py --check
+
+      - name: Export job matrix
+        id: matrix
+        run: |
+          matrix_json="$(python scripts/discover_streaming_onnx_targets.py --github-matrix)"
+          {
+            echo "matrix<<EOF_MATRIX"
+            echo "$matrix_json"
+            echo "EOF_MATRIX"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Record revisions
+        id: rev
+        run: |
+          echo "dev_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git fetch --no-tags origin main
+          echo "main_sha=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+
+  export:
+    needs: discover
+    runs-on: ${{ vars.ONNX_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h
+
+      - name: Install CPU PyTorch and FunASR
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e . --extra-index-url https://download.pytorch.org/whl/cpu
+        env:
+          PYTHONUNBUFFERED: "1"
+
+      - name: Export ${{ matrix.role }}
+        run: python scripts/export_streaming_onnx.py --slot "${{ matrix.slot }}" --output-dir export/streaming-onnx
+        env:
+          PYTHONUNBUFFERED: "1"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: onnx-${{ matrix.role }}
+          path: export/streaming-onnx/${{ matrix.role }}.zip
+          if-no-files-found: error
+
+  release:
+    needs:
+      - discover
+      - export
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: onnx-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Write checksums and release notes
+        env:
+          DEV_SHA: ${{ needs.discover.outputs.dev_sha }}
+          MAIN_SHA: ${{ needs.discover.outputs.main_sha }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("release-assets")
+          root.mkdir(exist_ok=True)
+          manifest_name = "streaming_onnx_targets.json"
+          target = root / manifest_name
+          target.write_bytes(Path("docs/agent/streaming_onnx_targets.json").read_bytes())
+
+          def digest(path: Path) -> str:
+              hasher = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      hasher.update(chunk)
+              return hasher.hexdigest()
+
+          files = sorted(
+              path for path in root.iterdir() if path.is_file() and path.name != "SHA256SUMS"
+          )
+          sums = "".join(f"{digest(path)}  {path.name}\n" for path in files)
+          (root / "SHA256SUMS").write_text(sums, encoding="utf-8")
+
+          manifest = json.loads(target.read_text(encoding="utf-8"))
+          dev_sha = os.environ["DEV_SHA"]
+          lines = [
+              f"dev: {dev_sha}",
+              f"main: {os.environ['MAIN_SHA']}",
+              "导出: type=onnx，quantize=false",
+              "",
+              "槽位:",
+          ]
+          for slot in manifest["slots"]:
+              lines.append(
+                  f"- {slot['role']}: {slot['export_id']} ({slot['resolution']})"
+              )
+          Path("release-notes.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          Path("release-tag.txt").write_text(
+              "streaming-onnx-" + dev_sha[:7] + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEV_SHA: ${{ needs.discover.outputs.dev_sha }}
+        run: |
+          tag="$(tr -d '\n' < release-tag.txt)"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --clobber
+          else
+            gh release create "$tag" release-assets/* \
+              --target "$DEV_SHA" \
+              --title "$tag" \
+              --notes-file release-notes.md
+          fi

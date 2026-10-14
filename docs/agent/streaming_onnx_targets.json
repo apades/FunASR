@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "export_type": "onnx",
+  "quantize": false,
+  "runtime_script": "runtime/run_server_2pass.sh",
+  "sidecars": [
+    "config.yaml",
+    "am.mvn",
+    "tokens.json",
+    "vad.yaml",
+    "vad.mvn",
+    "punc.yaml",
+    "seg_dict"
+  ],
+  "slots": [
+    {
+      "slot": "model_dir",
+      "role": "offline_asr",
+      "role_zh": "2pass 离线 ASR",
+      "runtime_id": "damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx",
+      "export_id": "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+      "resolution": "export_example",
+      "export_example": "examples/industrial_data_pretraining/bicif_paraformer/export.py",
+      "hf_alias": null,
+      "hf_id": null,
+      "export_meta": "funasr/models/bicif_paraformer/export_meta.py",
+      "expected_onnx": [
+        "model.onnx"
+      ]
+    },
+    {
+      "slot": "online_model_dir",
+      "role": "online_asr",
+      "role_zh": "在线流式 ASR",
+      "runtime_id": "damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online-onnx",
+      "export_id": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online",
+      "resolution": "name_map:paraformer-zh-streaming",
+      "export_example": null,
+      "hf_alias": "paraformer-zh-streaming",
+      "hf_id": "funasr/paraformer-zh-streaming",
+      "export_meta": "funasr/models/paraformer_streaming/export_meta.py",
+      "expected_onnx": [
+        "model.onnx",
+        "decoder.onnx"
+      ]
+    },
+    {
+      "slot": "vad_dir",
+      "role": "vad",
+      "role_zh": "VAD",
+      "runtime_id": "damo/speech_fsmn_vad_zh-cn-16k-common-onnx",
+      "export_id": "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
+      "resolution": "export_example",
+      "export_example": "examples/industrial_data_pretraining/fsmn_vad_streaming/export.py",
+      "hf_alias": "fsmn-vad",
+      "hf_id": "funasr/fsmn-vad",
+      "export_meta": "funasr/models/fsmn_vad_streaming/export_meta.py",
+      "expected_onnx": [
+        "model.onnx"
+      ]
+    },
+    {
+      "slot": "punc_dir",
+      "role": "punc",
+      "role_zh": "实时标点",
+      "runtime_id": "damo/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727-onnx",
+      "export_id": "iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727",
+      "resolution": "export_example",
+      "export_example": "examples/industrial_data_pretraining/ct_transformer_streaming/export.py",
+      "hf_alias": null,
+      "hf_id": null,
+      "export_meta": "funasr/models/ct_transformer_streaming/export_meta.py",
+      "expected_onnx": [
+        "model.onnx"
+      ]
+    }
+  ]
+}

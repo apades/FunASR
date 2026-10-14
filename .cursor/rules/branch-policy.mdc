@@ -1,0 +1,11 @@
+---
+description: 附属改动只允许在 dev，禁止改 main
+alwaysApply: true
+---
+
+# 分支
+
+- 这个仓库是 FunASR 的附属线。`upstream` 是 `modelscope/FunASR`，`origin` 是 `apades/FunASR`。
+- `main` 只镜像上游。不要在 `main` 上改文件、提交或推送附属改动。
+- 脚本、Cursor 规则、打包工作流和流式 ONNX 清单只放在 `dev`。
+- 提交前确认 `git branch --show-current` 是 `dev`。

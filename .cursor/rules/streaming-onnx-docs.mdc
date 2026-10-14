@@ -1,0 +1,19 @@
+---
+description: 流式 ONNX 清单必须由识别脚本按当前代码重新生成
+alwaysApply: true
+---
+
+# 流式 ONNX 清单
+
+`docs/agent/streaming_onnx_targets.json` 禁止手改。`docs/agent/streaming_onnx_packaging.md` 里「当前目标」一节也由脚本生成。
+
+改到下列文件时，在同一批 `dev` 提交里运行 `python scripts/discover_streaming_onnx_targets.py`，并用 `--check` 确认：
+
+- `runtime/run_server_2pass.sh`
+- `examples/industrial_data_pretraining/**/export.py`
+- `funasr/download/name_maps_from_hub.py`
+- `funasr/models/**/export_meta.py`
+
+导出保持 `type="onnx"`、`quantize=False`，与 `examples/industrial_data_pretraining/paraformer_streaming/export.py` 一致。
+
+打包工作流在清单和代码不一致时失败，并且不发布 Release。先更新清单，再推 `dev`。
